@@ -1,8 +1,18 @@
-use std::{error::Error, io, vec};
+use std::{
+    error::Error,
+    io::{self},
+    vec,
+};
 
 use clap::{Parser, Subcommand};
 use ratatui::{
     Frame, Terminal,
+    crossterm::{
+        event::{self, Event, KeyCode},
+        execute,
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    },
+    layout::{Constraint, Direction, Layout},
     prelude::{CrosstermBackend, Line},
     style::{Color, Style},
     text::Span,
@@ -51,6 +61,10 @@ async fn draw_tui(
     channel: Channel,
 ) -> Result<(), Box<dyn Error>> {
     terminal.draw(|frame: &mut Frame| {
+        let area = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Min(0)])
+            .split(frame.area())[0];
         let lines: Vec<Line> = channel
             .items()
             .iter()
@@ -74,8 +88,16 @@ async fn draw_tui(
             .collect();
 
         let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, frame.area());
+        frame.render_widget(paragraph, area);
     })?;
+
+    loop {
+        if let Event::Key(key) = event::read()? {
+            if key.code == KeyCode::Char('q') {
+                break;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -88,16 +110,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Get { url } => {
             let channel = get(&url).await?;
 
+            enable_raw_mode()?;
+            execute!(io::stdout(), EnterAlternateScreen)?;
+
             let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
             draw_tui(&mut terminal, channel).await?;
 
-            //            loop {
-            //                if let Event::Key(key) = event::read()? {
-            //                    if key.code == KeyCode::Char('q') {
-            //                        break;
-            //                    }
-            //                }
-            //            }
+            disable_raw_mode()?;
+            execute!(io::stdout(), LeaveAlternateScreen)?;
         }
     }
 
